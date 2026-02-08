@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Secretário Pessoal
 
-## Getting Started
+Aplicativo pessoal para gestão financeira entre múltiplas empresas e controle de tarefas.
 
-First, run the development server:
+## Stack
+
+- **Frontend:** Next.js 14+ (App Router), TypeScript, Tailwind CSS, shadcn/ui
+- **Backend:** Supabase (PostgreSQL, Auth, Realtime)
+- **IA:** Claude API (Anthropic)
+- **Deploy:** Vercel
+
+## Funcionalidades
+
+- Gestão de transações entre empresas
+- Matriz de saldos (quem deve para quem)
+- Agenda de tarefas e pagamentos
+- Chat com IA para comandos rápidos
+- Tema claro/escuro
+- Autenticação via Magic Link
+
+## Setup
+
+### 1. Instalar dependências
+
+```bash
+npm install
+```
+
+### 2. Configurar variáveis de ambiente
+
+Copie `.env.example` para `.env.local` e preencha:
+
+```bash
+cp .env.example .env.local
+```
+
+### 3. Configurar Supabase
+
+1. Crie um projeto em [supabase.com](https://supabase.com)
+2. Copie as credenciais para `.env.local`
+3. Execute as migrations em `supabase/migrations/`
+
+### 4. Rodar em desenvolvimento
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Acesse [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Estrutura do Projeto
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+secretario-pessoal/
+├── app/                    # Next.js App Router
+│   ├── (auth)/            # Rotas públicas (login)
+│   ├── (dashboard)/       # Rotas protegidas
+│   └── api/               # API routes
+├── components/            # Componentes React
+│   ├── ui/               # shadcn/ui
+│   ├── layout/           # Header, Sidebar
+│   └── ...               # Componentes por feature
+├── lib/                   # Utilitários
+│   ├── supabase/         # Clientes Supabase
+│   ├── store/            # Zustand stores
+│   └── hooks/            # Custom hooks
+├── types/                 # TypeScript types
+└── supabase/             # Migrations SQL
+```
 
-## Learn More
+## Comandos
 
-To learn more about Next.js, take a look at the following resources:
+| Comando | Descrição |
+|---------|-----------|
+| `npm run dev` | Desenvolvimento |
+| `npm run build` | Build de produção |
+| `npm run lint` | Verificar código |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Atalhos do App
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Atalho | Ação |
+|--------|------|
+| `/p` | Nova transação |
+| `/t` | Nova tarefa |
+| `/s` | Matriz de saldos |
+| `Ctrl+K` | Command palette |
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private - Uso pessoal
