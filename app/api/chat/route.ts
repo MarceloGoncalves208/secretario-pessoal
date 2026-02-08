@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '');
 
 const SYSTEM_PROMPT = `Você é um assistente financeiro pessoal inteligente e amigável.
 Você ajuda o usuário a gerenciar suas finanças entre múltiplas empresas.
@@ -27,25 +25,30 @@ export async function POST(request: NextRequest) {
   try {
     const { messages } = await request.json();
 
-    if (!process.env.ANTHROPIC_API_KEY) {
+    if (!process.env.GOOGLE_API_KEY) {
       return NextResponse.json(
         { error: 'API key não configurada' },
         { status: 500 }
       );
     }
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: messages.map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    // Build conversation history for Gemini
+    const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+
+    const chat = model.startChat({
+      history,
+      systemInstruction: SYSTEM_PROMPT,
     });
 
-    const textContent = response.content.find((block) => block.type === 'text');
-    const content = textContent?.type === 'text' ? textContent.text : '';
+    const lastMessage = messages[messages.length - 1];
+    const result = await chat.sendMessage(lastMessage.content);
+    const response = await result.response;
+    const content = response.text();
 
     return NextResponse.json({ content });
   } catch (error) {
