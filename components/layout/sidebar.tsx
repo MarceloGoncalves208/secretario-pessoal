@@ -18,7 +18,7 @@ import { useUIStore } from '@/lib/store/ui';
 const navItems = [
   { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/transacoes', icon: ArrowRightLeft, label: 'Transações' },
-  { href: '/saldos', icon: Grid3X3, label: 'Matriz de Saldos' },
+  { href: '/matriz', icon: Grid3X3, label: 'Matriz de Saldos' },
   { href: '/agenda', icon: Calendar, label: 'Agenda' },
   { href: '/empresas', icon: Building2, label: 'Empresas' },
   { href: '/categorias', icon: Tags, label: 'Categorias' },

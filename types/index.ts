@@ -31,20 +31,17 @@ export interface Categoria {
 export interface Transacao {
   id: string;
   user_id: string;
-  data: string;
-  hora: string | null;
+  tipo: 'entrada' | 'saida';
   valor: number;
-  origem_id: string;
-  destino_id: string;
-  categoria_id: string | null;
   descricao: string | null;
-  agendado: boolean;
-  data_agendamento: string | null;
+  data: string;
+  empresa_origem_id: string | null;
+  empresa_destino_id: string | null;
+  categoria_id: string | null;
   created_at: string;
-  updated_at: string;
   // Joined fields
-  origem?: Empresa;
-  destino?: Empresa;
+  empresa_origem?: Empresa;
+  empresa_destino?: Empresa;
   categoria?: Categoria;
 }
 
@@ -70,15 +67,13 @@ export interface Saldo {
 
 // Form types
 export interface TransacaoFormData {
-  data: string;
-  hora?: string;
+  tipo: 'entrada' | 'saida';
   valor: number;
-  origem_id: string;
-  destino_id: string;
-  categoria_id?: string;
   descricao?: string;
-  agendado: boolean;
-  data_agendamento?: string;
+  data: string;
+  empresa_origem_id?: string;
+  empresa_destino_id?: string;
+  categoria_id?: string;
 }
 
 export interface EmpresaFormData {
