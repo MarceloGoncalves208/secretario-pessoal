@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useEmpresas } from '@/lib/hooks/use-empresas';
 import { useCategorias } from '@/lib/hooks/use-categorias';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
@@ -46,6 +47,17 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
   const { categorias } = useCategorias();
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
 
+  // Modo: 'individual' (uma empresa) ou 'transferencia' (entre empresas)
+  const [modo, setModo] = useState<'individual' | 'transferencia'>(() => {
+    // Se editando, detecta o modo baseado nos dados existentes
+    if (transacao) {
+      const temOrigem = !!transacao.empresa_origem_id;
+      const temDestino = !!transacao.empresa_destino_id;
+      return (temOrigem && temDestino) ? 'transferencia' : 'individual';
+    }
+    return 'individual';
+  });
+
   const {
     register,
     handleSubmit,
@@ -67,7 +79,10 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
 
   // Process transcription with AI
   const processTranscription = useCallback(async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim()) {
+      toast.error('Nenhuma fala detectada');
+      return;
+    }
 
     setIsProcessingAudio(true);
     try {
@@ -88,23 +103,45 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
 
       const { extraction } = await response.json();
 
+      console.log('Extraction result:', extraction); // Debug
+
       // Fill form fields with extracted data
-      setValue('tipo', extraction.tipo);
-      setValue('valor', extraction.valor);
-      setValue('data', extraction.data);
-      setValue('descricao', extraction.descricao || '');
+      if (extraction.tipo) {
+        setValue('tipo', extraction.tipo);
+      }
+      if (extraction.valor && extraction.valor > 0) {
+        setValue('valor', extraction.valor);
+      }
+      if (extraction.data) {
+        setValue('data', extraction.data);
+      }
+      if (extraction.descricao) {
+        setValue('descricao', extraction.descricao);
+      }
+
+      // Detectar modo baseado nas empresas extraídas
+      const temOrigem = !!extraction.empresa_origem_nome;
+      const temDestino = !!extraction.empresa_destino_nome;
+
+      if (temOrigem && temDestino) {
+        setModo('transferencia');
+      } else {
+        setModo('individual');
+      }
 
       // Find empresa IDs by name
       if (extraction.empresa_origem_nome) {
         const empresa = empresas.find(
-          e => e.nome.toLowerCase() === extraction.empresa_origem_nome?.toLowerCase()
+          e => e.nome.toLowerCase().includes(extraction.empresa_origem_nome?.toLowerCase()) ||
+               extraction.empresa_origem_nome?.toLowerCase().includes(e.nome.toLowerCase())
         );
         if (empresa) setValue('empresa_origem_id', empresa.id);
       }
 
       if (extraction.empresa_destino_nome) {
         const empresa = empresas.find(
-          e => e.nome.toLowerCase() === extraction.empresa_destino_nome?.toLowerCase()
+          e => e.nome.toLowerCase().includes(extraction.empresa_destino_nome?.toLowerCase()) ||
+               extraction.empresa_destino_nome?.toLowerCase().includes(e.nome.toLowerCase())
         );
         if (empresa) setValue('empresa_destino_id', empresa.id);
       }
@@ -112,12 +149,14 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
       // Find categoria ID by name
       if (extraction.categoria_sugerida) {
         const categoria = categorias.find(
-          c => c.nome.toLowerCase() === extraction.categoria_sugerida?.toLowerCase()
+          c => c.nome.toLowerCase().includes(extraction.categoria_sugerida?.toLowerCase()) ||
+               extraction.categoria_sugerida?.toLowerCase().includes(c.nome.toLowerCase())
         );
         if (categoria) setValue('categoria_id', categoria.id);
       }
 
-      toast.success(`Campos preenchidos! Confiança: ${Math.round(extraction.confianca * 100)}%`);
+      const confianca = Math.round((extraction.confianca || 0.5) * 100);
+      toast.success(`Campos preenchidos! Confiança: ${confianca}%`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erro ao processar transcrição';
       toast.error(message);
@@ -152,6 +191,32 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
     (c) => c.tipo === 'ambos' || c.tipo === selectedTipo
   );
 
+  // Handle mode change
+  const handleModoChange = (novoModo: 'individual' | 'transferencia') => {
+    setModo(novoModo);
+    // Limpar empresas ao trocar modo
+    if (novoModo === 'individual') {
+      setValue('empresa_origem_id', undefined);
+      setValue('empresa_destino_id', undefined);
+    }
+  };
+
+  // Handle empresa selection in individual mode
+  const handleEmpresaIndividual = (empresaId: string | undefined) => {
+    if (selectedTipo === 'saida') {
+      // Saída = despesa própria = empresa origem
+      setValue('empresa_origem_id', empresaId);
+      setValue('empresa_destino_id', undefined);
+    } else {
+      // Entrada = receita própria = empresa destino
+      setValue('empresa_destino_id', empresaId);
+      setValue('empresa_origem_id', undefined);
+    }
+  };
+
+  // Get current empresa in individual mode
+  const empresaIndividualId = selectedTipo === 'saida' ? selectedOrigemId : selectedDestinoId;
+
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
       {/* Voice Input Section */}
@@ -183,12 +248,13 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
               )}
             </Button>
             <span className="text-sm text-muted-foreground">
-              {isRecording ? 'Ouvindo...' : 'Diga ex: "Paguei 50 reais de luz ontem"'}
+              {isRecording ? 'Ouvindo...' : 'Ex: "Paguei 50 reais de luz da loja ontem"'}
             </span>
           </div>
 
           {(isRecording || interimTranscript || transcript) && (
-            <div className="text-sm">
+            <div className="text-sm p-2 bg-background rounded">
+              <span className="font-medium">Você disse: </span>
               <span className="text-muted-foreground">
                 {interimTranscript || transcript || 'Aguardando fala...'}
               </span>
@@ -201,19 +267,26 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
         </div>
       )}
 
+      {/* Tipo e Data */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Tipo *</Label>
           <Select
             value={selectedTipo}
-            onValueChange={(value) => setValue('tipo', value as 'entrada' | 'saida')}
+            onValueChange={(value) => {
+              setValue('tipo', value as 'entrada' | 'saida');
+              // Atualizar empresa ao trocar tipo no modo individual
+              if (modo === 'individual' && empresaIndividualId) {
+                handleEmpresaIndividual(empresaIndividualId);
+              }
+            }}
           >
             <SelectTrigger>
               <SelectValue placeholder="Selecione o tipo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="entrada">Entrada</SelectItem>
-              <SelectItem value="saida">Saída</SelectItem>
+              <SelectItem value="entrada">Entrada (Receita)</SelectItem>
+              <SelectItem value="saida">Saída (Despesa)</SelectItem>
             </SelectContent>
           </Select>
           {errors.tipo && (
@@ -234,8 +307,9 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
         </div>
       </div>
 
+      {/* Valor */}
       <div className="space-y-2">
-        <Label htmlFor="valor">Valor *</Label>
+        <Label htmlFor="valor">Valor (R$) *</Label>
         <Input
           id="valor"
           type="number"
@@ -249,48 +323,96 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Origem</Label>
-          <Select
-            value={selectedOrigemId || 'none'}
-            onValueChange={(value) => setValue('empresa_origem_id', value === 'none' ? undefined : value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione a origem" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Nenhuma</SelectItem>
-              {empresasAtivas.map((empresa) => (
-                <SelectItem key={empresa.id} value={empresa.id}>
-                  {empresa.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label>Destino</Label>
-          <Select
-            value={selectedDestinoId || 'none'}
-            onValueChange={(value) => setValue('empresa_destino_id', value === 'none' ? undefined : value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o destino" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Nenhuma</SelectItem>
-              {empresasAtivas.map((empresa) => (
-                <SelectItem key={empresa.id} value={empresa.id}>
-                  {empresa.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {/* Modo de Transação */}
+      <div className="space-y-2">
+        <Label>Tipo de Operação</Label>
+        <Tabs value={modo} onValueChange={(v) => handleModoChange(v as 'individual' | 'transferencia')}>
+          <TabsList className="w-full">
+            <TabsTrigger value="individual" className="flex-1">
+              Individual (uma empresa)
+            </TabsTrigger>
+            <TabsTrigger value="transferencia" className="flex-1">
+              Entre Empresas
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <p className="text-xs text-muted-foreground">
+          {modo === 'individual'
+            ? selectedTipo === 'saida'
+              ? 'Despesa própria da empresa selecionada'
+              : 'Receita própria da empresa selecionada'
+            : 'Transferência de recursos entre duas empresas'}
+        </p>
       </div>
 
+      {/* Empresa(s) */}
+      {modo === 'individual' ? (
+        <div className="space-y-2">
+          <Label>
+            {selectedTipo === 'saida' ? 'Empresa (quem pagou)' : 'Empresa (quem recebeu)'}
+          </Label>
+          <Select
+            value={empresaIndividualId || 'none'}
+            onValueChange={(value) => handleEmpresaIndividual(value === 'none' ? undefined : value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione a empresa" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Nenhuma</SelectItem>
+              {empresasAtivas.map((empresa) => (
+                <SelectItem key={empresa.id} value={empresa.id}>
+                  {empresa.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Origem (quem paga)</Label>
+            <Select
+              value={selectedOrigemId || 'none'}
+              onValueChange={(value) => setValue('empresa_origem_id', value === 'none' ? undefined : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a origem" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhuma</SelectItem>
+                {empresasAtivas.map((empresa) => (
+                  <SelectItem key={empresa.id} value={empresa.id}>
+                    {empresa.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Destino (quem recebe)</Label>
+            <Select
+              value={selectedDestinoId || 'none'}
+              onValueChange={(value) => setValue('empresa_destino_id', value === 'none' ? undefined : value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o destino" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhuma</SelectItem>
+                {empresasAtivas.map((empresa) => (
+                  <SelectItem key={empresa.id} value={empresa.id}>
+                    {empresa.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
+      {/* Categoria */}
       <div className="space-y-2">
         <Label>Categoria</Label>
         <Select
@@ -317,6 +439,7 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
         </Select>
       </div>
 
+      {/* Descrição */}
       <div className="space-y-2">
         <Label htmlFor="descricao">Descrição</Label>
         <Textarea
@@ -327,6 +450,7 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
         />
       </div>
 
+      {/* Botões */}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
