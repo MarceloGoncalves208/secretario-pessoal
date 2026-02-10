@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, ArrowUpCircle, ArrowDownCircle, Filter } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowUpCircle, ArrowDownCircle, Filter, Mic } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,9 +41,12 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TransacaoForm } from '@/components/forms/transacao-form';
+import { TransacaoPreviewDialog } from '@/components/forms/transacao-preview-dialog';
+import { AudioRecorder } from '@/components/audio/audio-recorder';
 import { useTransacoes } from '@/lib/hooks/use-transacoes';
 import { useEmpresas } from '@/lib/hooks/use-empresas';
-import type { Transacao, TransacaoFormData } from '@/types';
+import { useCategorias } from '@/lib/hooks/use-categorias';
+import type { Transacao, TransacaoFormData, AudioExtractionResult } from '@/types';
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -68,7 +71,8 @@ export default function TransacoesPage() {
     empresaDestinoId: filters.empresaDestinoId,
     tipo: filters.tipo,
   });
-  const { empresasAtivas } = useEmpresas();
+  const { empresas, empresasAtivas } = useEmpresas();
+  const { categorias } = useCategorias();
 
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -77,6 +81,12 @@ export default function TransacoesPage() {
   const [editingTransacao, setEditingTransacao] = useState<Transacao | undefined>();
   const [deletingTransacao, setDeletingTransacao] = useState<Transacao | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Audio recording states
+  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+  const [audioExtraction, setAudioExtraction] = useState<AudioExtractionResult | null>(null);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
 
   const filteredTransacoes = transacoes.filter((t) =>
     t.descricao?.toLowerCase().includes(search.toLowerCase()) ||
@@ -135,14 +145,96 @@ export default function TransacoesPage() {
     setFilters({});
   };
 
+  // Audio recording handlers
+  const handleStartAudioRecording = () => {
+    setShowAudioRecorder(true);
+    setAudioExtraction(null);
+  };
+
+  const handleCancelAudioRecording = () => {
+    setShowAudioRecorder(false);
+    setIsProcessingAudio(false);
+  };
+
+  const handleTranscriptionComplete = async (transcription: string) => {
+    setIsProcessingAudio(true);
+
+    try {
+      const response = await fetch('/api/extract-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcription,
+          empresas: empresas.filter(e => e.ativa).map(e => ({ id: e.id, nome: e.nome })),
+          categorias: categorias.map(c => ({ id: c.id, nome: c.nome, tipo: c.tipo })),
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao processar transcrição');
+      }
+
+      const { extraction } = await response.json();
+      setAudioExtraction(extraction);
+      setShowAudioRecorder(false);
+      setPreviewDialogOpen(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao processar transcrição';
+      toast.error(message);
+    } finally {
+      setIsProcessingAudio(false);
+    }
+  };
+
+  const handleAudioTransactionConfirm = async (data: TransacaoFormData) => {
+    setIsSubmitting(true);
+    try {
+      await createTransacao(data);
+      toast.success('Transação criada por voz com sucesso!');
+      setPreviewDialogOpen(false);
+      setAudioExtraction(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao salvar transação';
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRecordAgain = () => {
+    setPreviewDialogOpen(false);
+    setAudioExtraction(null);
+    setShowAudioRecorder(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Transações</h1>
-        <Button onClick={handleCreate}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nova Transação
-        </Button>
+        <div className="flex items-center gap-2">
+          {showAudioRecorder ? (
+            <AudioRecorder
+              onTranscriptionComplete={handleTranscriptionComplete}
+              onCancel={handleCancelAudioRecording}
+              isProcessing={isProcessingAudio}
+              className="min-w-[200px]"
+            />
+          ) : (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleStartAudioRecording}
+              title="Adicionar transação por voz"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+          )}
+          <Button onClick={handleCreate}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nova Transação
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -406,6 +498,17 @@ export default function TransacoesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <TransacaoPreviewDialog
+        open={previewDialogOpen}
+        onOpenChange={setPreviewDialogOpen}
+        extraction={audioExtraction}
+        empresas={empresas}
+        categorias={categorias}
+        onConfirm={handleAudioTransactionConfirm}
+        onRecordAgain={handleRecordAgain}
+        isLoading={isSubmitting}
+      />
     </div>
   );
 }

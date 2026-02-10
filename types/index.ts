@@ -93,3 +93,24 @@ export interface TarefaFormData {
   data?: string;
   hora?: string;
 }
+
+// Audio extraction types
+export interface AudioExtractionResult {
+  tipo: 'entrada' | 'saida';
+  valor: number;
+  descricao: string;
+  empresa_origem_nome?: string;
+  empresa_destino_nome?: string;
+  categoria_sugerida?: string;
+  data: string;
+  confianca: number;
+  texto_original: string;
+}
+
+export interface TransacaoPreview extends TransacaoFormData {
+  texto_original: string;
+  confianca: number;
+  empresa_origem_nome?: string;
+  empresa_destino_nome?: string;
+  categoria_nome?: string;
+}
