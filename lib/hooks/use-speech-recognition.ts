@@ -79,7 +79,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     const recognition = new SpeechRecognitionAPI();
     recognitionRef.current = recognition;
 
-    recognition.continuous = true;
+    recognition.continuous = false;  // Parar após uma frase
     recognition.interimResults = true;
     recognition.lang = 'pt-BR';
 
@@ -101,7 +101,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       }
 
       if (finalTranscript) {
-        setTranscript(prev => prev + finalTranscript);
+        setTranscript(finalTranscript);  // Substituir, não acumular
       }
       setInterimTranscript(interim);
     };
