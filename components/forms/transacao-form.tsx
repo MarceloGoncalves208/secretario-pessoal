@@ -219,8 +219,8 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
-      {/* Voice Input Section */}
-      {isSpeechSupported && !transacao && (
+      {/* Voice Input Section - Temporariamente desativado (aguardando API) */}
+      {false && isSpeechSupported && !transacao && (
         <div className="p-3 bg-muted rounded-lg space-y-2">
           <div className="flex items-center gap-2">
             <Button

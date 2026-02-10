@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
 
     const today = new Date().toISOString().split('T')[0];
     const empresasList = empresas.map(e => e.nome).join(', ') || 'Nenhuma empresa cadastrada';
@@ -135,8 +135,9 @@ RESPONDA APENAS COM JSON VÁLIDO (sem markdown, sem código):
     return NextResponse.json({ extraction });
   } catch (error) {
     console.error('Extract transaction API error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     return NextResponse.json(
-      { error: 'Erro ao processar transcrição' },
+      { error: `Erro ao processar transcrição: ${errorMessage}` },
       { status: 500 }
     );
   }
