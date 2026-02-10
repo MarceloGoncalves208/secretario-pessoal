@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -47,16 +47,6 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
 
   const {
-    isSupported: isSpeechSupported,
-    isRecording,
-    transcript,
-    interimTranscript,
-    error: speechError,
-    startRecording,
-    stopRecording,
-  } = useSpeechRecognition();
-
-  const {
     register,
     handleSubmit,
     setValue,
@@ -75,35 +65,8 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
     },
   });
 
-  const onFormSubmit = async (data: FormData) => {
-    await onSubmit(data as TransacaoFormData);
-  };
-
-  const selectedTipo = watch('tipo');
-  const selectedOrigemId = watch('empresa_origem_id');
-  const selectedDestinoId = watch('empresa_destino_id');
-  const selectedCategoriaId = watch('categoria_id');
-
-  // Filter categories based on transaction type
-  const filteredCategorias = categorias.filter(
-    (c) => c.tipo === 'ambos' || c.tipo === selectedTipo
-  );
-
-  // Handle voice recording
-  const handleMicClick = async () => {
-    if (isRecording) {
-      stopRecording();
-      // Process the transcript when stopping
-      if (transcript) {
-        await processTranscription(transcript);
-      }
-    } else {
-      startRecording();
-    }
-  };
-
   // Process transcription with AI
-  const processTranscription = async (text: string) => {
+  const processTranscription = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
     setIsProcessingAudio(true);
@@ -161,18 +124,33 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
     } finally {
       setIsProcessingAudio(false);
     }
+  }, [empresas, categorias, setValue]);
+
+  const {
+    isSupported: isSpeechSupported,
+    isRecording,
+    interimTranscript,
+    transcript,
+    error: speechError,
+    startRecording,
+    stopRecording,
+  } = useSpeechRecognition({
+    onTranscriptionComplete: processTranscription,
+  });
+
+  const onFormSubmit = async (data: FormData) => {
+    await onSubmit(data as TransacaoFormData);
   };
 
-  // Auto-process when transcript changes after recording stops
-  const handleStopAndProcess = async () => {
-    stopRecording();
-    // Small delay to ensure transcript is updated
-    setTimeout(async () => {
-      if (transcript) {
-        await processTranscription(transcript);
-      }
-    }, 100);
-  };
+  const selectedTipo = watch('tipo');
+  const selectedOrigemId = watch('empresa_origem_id');
+  const selectedDestinoId = watch('empresa_destino_id');
+  const selectedCategoriaId = watch('categoria_id');
+
+  // Filter categories based on transaction type
+  const filteredCategorias = categorias.filter(
+    (c) => c.tipo === 'ambos' || c.tipo === selectedTipo
+  );
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
@@ -184,7 +162,7 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
               type="button"
               variant={isRecording ? 'destructive' : 'secondary'}
               size="sm"
-              onClick={isRecording ? handleStopAndProcess : handleMicClick}
+              onClick={isRecording ? stopRecording : startRecording}
               disabled={isProcessingAudio}
             >
               {isProcessingAudio ? (

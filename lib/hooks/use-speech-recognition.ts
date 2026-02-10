@@ -36,6 +36,10 @@ declare global {
   }
 }
 
+export interface UseSpeechRecognitionOptions {
+  onTranscriptionComplete?: (transcript: string) => void;
+}
+
 export interface UseSpeechRecognitionReturn {
   isSupported: boolean;
   isRecording: boolean;
@@ -47,7 +51,7 @@ export interface UseSpeechRecognitionReturn {
   resetTranscript: () => void;
 }
 
-export function useSpeechRecognition(): UseSpeechRecognitionReturn {
+export function useSpeechRecognition(options?: UseSpeechRecognitionOptions): UseSpeechRecognitionReturn {
   const [isSupported, setIsSupported] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -55,6 +59,13 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [error, setError] = useState<string | null>(null);
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const transcriptRef = useRef<string>('');
+  const onCompleteRef = useRef(options?.onTranscriptionComplete);
+
+  // Update ref when callback changes
+  useEffect(() => {
+    onCompleteRef.current = options?.onTranscriptionComplete;
+  }, [options?.onTranscriptionComplete]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -72,6 +83,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     setError(null);
     setTranscript('');
     setInterimTranscript('');
+    transcriptRef.current = '';
 
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognitionAPI) return;
@@ -79,7 +91,7 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     const recognition = new SpeechRecognitionAPI();
     recognitionRef.current = recognition;
 
-    recognition.continuous = false;  // Parar após uma frase
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = 'pt-BR';
 
@@ -101,7 +113,8 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       }
 
       if (finalTranscript) {
-        setTranscript(finalTranscript);  // Substituir, não acumular
+        transcriptRef.current = finalTranscript;
+        setTranscript(finalTranscript);
       }
       setInterimTranscript(interim);
     };
@@ -132,6 +145,12 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
     recognition.onend = () => {
       setIsRecording(false);
       setInterimTranscript('');
+
+      // Call the callback with the final transcript
+      const finalText = transcriptRef.current;
+      if (finalText && onCompleteRef.current) {
+        onCompleteRef.current(finalText);
+      }
     };
 
     try {
@@ -148,13 +167,12 @@ export function useSpeechRecognition(): UseSpeechRecognitionReturn {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
-    setIsRecording(false);
-    setInterimTranscript('');
   }, []);
 
   const resetTranscript = useCallback(() => {
     setTranscript('');
     setInterimTranscript('');
+    transcriptRef.current = '';
     setError(null);
   }, []);
 
