@@ -1,8 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { Mic, MicOff, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { useEmpresas } from '@/lib/hooks/use-empresas';
 import { useCategorias } from '@/lib/hooks/use-categorias';
+import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import type { Transacao, TransacaoFormData } from '@/types';
 
 const schema = z.object({
@@ -38,8 +42,19 @@ interface TransacaoFormProps {
 }
 
 export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: TransacaoFormProps) {
-  const { empresasAtivas } = useEmpresas();
+  const { empresas, empresasAtivas } = useEmpresas();
   const { categorias } = useCategorias();
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+
+  const {
+    isSupported: isSpeechSupported,
+    isRecording,
+    transcript,
+    interimTranscript,
+    error: speechError,
+    startRecording,
+    stopRecording,
+  } = useSpeechRecognition();
 
   const {
     register,
@@ -74,8 +89,140 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
     (c) => c.tipo === 'ambos' || c.tipo === selectedTipo
   );
 
+  // Handle voice recording
+  const handleMicClick = async () => {
+    if (isRecording) {
+      stopRecording();
+      // Process the transcript when stopping
+      if (transcript) {
+        await processTranscription(transcript);
+      }
+    } else {
+      startRecording();
+    }
+  };
+
+  // Process transcription with AI
+  const processTranscription = async (text: string) => {
+    if (!text.trim()) return;
+
+    setIsProcessingAudio(true);
+    try {
+      const response = await fetch('/api/extract-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcription: text,
+          empresas: empresas.filter(e => e.ativa).map(e => ({ id: e.id, nome: e.nome })),
+          categorias: categorias.map(c => ({ id: c.id, nome: c.nome, tipo: c.tipo })),
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao processar transcrição');
+      }
+
+      const { extraction } = await response.json();
+
+      // Fill form fields with extracted data
+      setValue('tipo', extraction.tipo);
+      setValue('valor', extraction.valor);
+      setValue('data', extraction.data);
+      setValue('descricao', extraction.descricao || '');
+
+      // Find empresa IDs by name
+      if (extraction.empresa_origem_nome) {
+        const empresa = empresas.find(
+          e => e.nome.toLowerCase() === extraction.empresa_origem_nome?.toLowerCase()
+        );
+        if (empresa) setValue('empresa_origem_id', empresa.id);
+      }
+
+      if (extraction.empresa_destino_nome) {
+        const empresa = empresas.find(
+          e => e.nome.toLowerCase() === extraction.empresa_destino_nome?.toLowerCase()
+        );
+        if (empresa) setValue('empresa_destino_id', empresa.id);
+      }
+
+      // Find categoria ID by name
+      if (extraction.categoria_sugerida) {
+        const categoria = categorias.find(
+          c => c.nome.toLowerCase() === extraction.categoria_sugerida?.toLowerCase()
+        );
+        if (categoria) setValue('categoria_id', categoria.id);
+      }
+
+      toast.success(`Campos preenchidos! Confiança: ${Math.round(extraction.confianca * 100)}%`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao processar transcrição';
+      toast.error(message);
+    } finally {
+      setIsProcessingAudio(false);
+    }
+  };
+
+  // Auto-process when transcript changes after recording stops
+  const handleStopAndProcess = async () => {
+    stopRecording();
+    // Small delay to ensure transcript is updated
+    setTimeout(async () => {
+      if (transcript) {
+        await processTranscription(transcript);
+      }
+    }, 100);
+  };
+
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
+      {/* Voice Input Section */}
+      {isSpeechSupported && !transacao && (
+        <div className="p-3 bg-muted rounded-lg space-y-2">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={isRecording ? 'destructive' : 'secondary'}
+              size="sm"
+              onClick={isRecording ? handleStopAndProcess : handleMicClick}
+              disabled={isProcessingAudio}
+            >
+              {isProcessingAudio ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : isRecording ? (
+                <>
+                  <MicOff className="h-4 w-4 mr-2" />
+                  Parar
+                </>
+              ) : (
+                <>
+                  <Mic className="h-4 w-4 mr-2" />
+                  Falar transação
+                </>
+              )}
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {isRecording ? 'Ouvindo...' : 'Diga ex: "Paguei 50 reais de luz ontem"'}
+            </span>
+          </div>
+
+          {(isRecording || interimTranscript || transcript) && (
+            <div className="text-sm">
+              <span className="text-muted-foreground">
+                {interimTranscript || transcript || 'Aguardando fala...'}
+              </span>
+            </div>
+          )}
+
+          {speechError && (
+            <p className="text-sm text-destructive">{speechError}</p>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Tipo *</Label>
@@ -206,7 +353,7 @@ export function TransacaoForm({ transacao, onSubmit, onCancel, isLoading }: Tran
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancelar
         </Button>
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading || isProcessingAudio}>
           {isLoading ? 'Salvando...' : transacao ? 'Atualizar' : 'Criar'}
         </Button>
       </div>
